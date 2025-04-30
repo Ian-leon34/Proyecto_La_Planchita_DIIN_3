@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+
+        {
+            "name": "proyecto_laplanchita",
+            "cwd": "Users/m2/Downloads/proyecto_laplanchita",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "proyecto_laplanchita (profile mode)",
+            "cwd": "Users/m2/Downloads/proyecto_laplanchita",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "proyecto_laplanchita (release mode)",
+            "cwd": "Users/m2/Downloads/proyecto_laplanchita",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}
