@@ -1,13 +1,264 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import '../models/carrito_model.dart';
 
 class ExplorarMenu extends StatelessWidget {
   const ExplorarMenu({super.key});
 
+  void _mostrarSeleccionCantidad(
+    BuildContext context,
+    Map<String, dynamic> producto,
+  ) {
+    int cantidad = 1;
+    String tipoSeleccionado = 'Pan';
+    final esHamburguesa = producto['hamburguesa'] == true;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            int precioFinal = producto['precio'];
+            if (esHamburguesa) {
+              if (producto['nombre'].toLowerCase().contains('plancha')) {
+                precioFinal = 16000;
+              } else if (tipoSeleccionado == 'Patacón') {
+                precioFinal = 11000;
+              } else {
+                precioFinal = 10000;
+              }
+            }
+
+            return AlertDialog(
+              title: Text(producto['nombre'].toString()),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(producto['imagen'].toString(), height: 100),
+                  const SizedBox(height: 10),
+                  if (esHamburguesa)
+                    DropdownButton<String>(
+                      value: tipoSeleccionado,
+                      items:
+                          ['Pan', 'Arepa', 'Patacón'].map((tipo) {
+                            return DropdownMenuItem(
+                              value: tipo,
+                              child: Text(tipo.toString()),
+                            );
+                          }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          tipoSeleccionado = value!;
+                        });
+                      },
+                    ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        onPressed:
+                            () => setState(() {
+                              if (cantidad > 1) cantidad--;
+                            }),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(cantidad.toString()),
+                      IconButton(
+                        onPressed: () => setState(() => cantidad++),
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text('Total: \$${precioFinal * cantidad}'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    carrito.add(
+                      ProductoSeleccionado(
+                        nombre: producto['nombre'].toString(),
+                        imagen: producto['imagen'].toString(),
+                        precio: producto['precio'] as int,
+                        cantidad: cantidad,
+                        tipoHamburguesa:
+                            esHamburguesa ? tipoSeleccionado : null,
+                      ),
+                    );
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Producto agregado al carrito'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  child: const Text('Agregar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _guardarPedido() async {
+    if (carrito.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final ventasExistentesJson = prefs.getString('registro_diario');
+
+    List<dynamic> ventasAnteriores = [];
+    if (ventasExistentesJson != null) {
+      ventasAnteriores = jsonDecode(ventasExistentesJson);
+    }
+
+    final nuevosPedidos = carrito.map((item) => item.toMap()).toList();
+    final todasLasVentas = [...ventasAnteriores, ...nuevosPedidos];
+
+    await prefs.setString('registro_diario', jsonEncode(todasLasVentas));
+
+    final directory = await getApplicationDocumentsDirectory();
+    final fecha = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final file = File('${directory.path}/ventas_$fecha.json');
+    await file.writeAsString(jsonEncode(todasLasVentas));
+  }
+
+  void _mostrarCarrito(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          maxChildSize: 0.9,
+          builder: (_, controller) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const Text(
+                    "Carrito de compras",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child:
+                        carrito.isEmpty
+                            ? const Center(child: Text("El carrito está vacío"))
+                            : ListView.builder(
+                              controller: controller,
+                              itemCount: carrito.length,
+                              itemBuilder: (context, index) {
+                                final item = carrito[index];
+                                return ListTile(
+                                  leading: Image.asset(
+                                    item.imagen,
+                                    width: 40,
+                                    height: 40,
+                                  ),
+                                  title: Text(item.nombreConTipo),
+                                  subtitle: Text('Cantidad: ${item.cantidad}'),
+                                  trailing: Text('\$${item.total}'),
+                                );
+                              },
+                            ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text(
+                          'Total a pagar: ',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '\$${carrito.fold(0, (sum, item) => sum + item.total)}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepOrange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed:
+                        carrito.isEmpty
+                            ? null
+                            : () async {
+                              try {
+                                await _guardarPedido();
+                                carrito.clear();
+                                Navigator.pop(context); // << CIERRA MODAL AQUÍ
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "✅ Pedido realizado con éxito",
+                                      ),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Error al realizar pedido: $e",
+                                      ),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                    icon: const Icon(Icons.check),
+                    label: const Text("Realizar pedido"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> productos = [
-      // Empanadas
       {
         'nombre': 'Empanada Papa con carne',
         'precio': 1100,
@@ -48,7 +299,6 @@ class ExplorarMenu extends StatelessWidget {
         'precio': 2500,
         'imagen': 'assets/empanada_ranchera.png',
       },
-      // Hamburguesas
       {
         'nombre': 'Hamburguesa Res',
         'precio': 10000,
@@ -105,19 +355,35 @@ class ExplorarMenu extends StatelessWidget {
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(12),
                       ),
-                      child: Image.asset(producto['imagen'], fit: BoxFit.cover),
+                      child: Image.asset(
+                        producto['imagen'].toString(),
+                        fit: BoxFit.cover,
+                        errorBuilder:
+                            (context, error, stackTrace) =>
+                                const Icon(Icons.fastfood),
+                      ),
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text(
-                      producto['nombre'],
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      producto['nombre'].toString(),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text('\$${producto['precio']}'),
+                    padding: const EdgeInsets.only(
+                      left: 8.0,
+                      right: 8.0,
+                      bottom: 8.0,
+                    ),
+                    child: Text(
+                      '\$${producto['precio']}',
+                      style: const TextStyle(fontSize: 15, color: Colors.green),
+                    ),
                   ),
                 ],
               ),
@@ -128,223 +394,8 @@ class ExplorarMenu extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _mostrarCarrito(context),
         backgroundColor: Colors.green,
-        child: const Icon(Icons.shopping_cart),
+        child: const Icon(Icons.shopping_cart, size: 28),
       ),
     );
-  }
-
-  void _mostrarSeleccionCantidad(
-    BuildContext context,
-    Map<String, dynamic> producto,
-  ) {
-    int cantidad = 1;
-    String tipoSeleccionado = 'Pan';
-    final esHamburguesa = producto['hamburguesa'] == true;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            int precioFinal = producto['precio'];
-            if (esHamburguesa) {
-              if (producto['nombre'].toLowerCase().contains('plancha')) {
-                precioFinal = 16000;
-              } else if (tipoSeleccionado == 'Patacón') {
-                precioFinal = 11000;
-              } else {
-                precioFinal = 10000;
-              }
-            }
-
-            return AlertDialog(
-              title: Text(producto['nombre']),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset(producto['imagen'], height: 100),
-                  const SizedBox(height: 10),
-
-                  if (esHamburguesa)
-                    DropdownButton<String>(
-                      value: tipoSeleccionado,
-                      items:
-                          ['Pan', 'Arepa', 'Patacón'].map((tipo) {
-                            return DropdownMenuItem(
-                              value: tipo,
-                              child: Text(tipo),
-                            );
-                          }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          tipoSeleccionado = value!;
-                        });
-                      },
-                    ),
-
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        onPressed:
-                            () => setState(() {
-                              if (cantidad > 1) cantidad--;
-                            }),
-                        icon: const Icon(Icons.remove),
-                      ),
-                      Text('$cantidad'),
-                      IconButton(
-                        onPressed: () => setState(() => cantidad++),
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text('Total: \$${precioFinal * cantidad}'),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    carrito.add(
-                      ProductoSeleccionado(
-                        nombre: producto['nombre'],
-                        imagen: producto['imagen'],
-                        precio: producto['precio'],
-                        cantidad: cantidad,
-                        tipoHamburguesa:
-                            esHamburguesa ? tipoSeleccionado : null,
-                      ),
-                    );
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: const [
-                            Icon(Icons.check_circle, color: Colors.green),
-                            SizedBox(width: 10),
-                            Text('Se agregó al carrito correctamente'),
-                          ],
-                        ),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: Colors.black87,
-                      ),
-                    );
-                  },
-                  child: const Text('Agregar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _mostrarCarrito(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          builder: (_, controller) {
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child:
-                  carrito.isEmpty
-                      ? const Center(child: Text("El carrito está vacío"))
-                      : Column(
-                        children: [
-                          const Text(
-                            "Carrito de compras",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Expanded(
-                            child: ListView.builder(
-                              controller: controller,
-                              itemCount: carrito.length,
-                              itemBuilder: (context, index) {
-                                final item = carrito[index];
-                                return ListTile(
-                                  leading: Image.asset(
-                                    item.imagen,
-                                    width: 40,
-                                    height: 40,
-                                  ),
-                                  title: Text(item.nombreConTipo),
-                                  subtitle: Text('Cantidad: ${item.cantidad}'),
-                                  trailing: Text('\$${item.total}'),
-                                );
-                              },
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                const Text(
-                                  'Total a pagar: ',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  '\$${_calcularTotalCarrito()}',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              carrito.clear();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("✅ Pedido realizado con éxito"),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.check),
-                            label: const Text("Realizar pedido"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  int _calcularTotalCarrito() {
-    return carrito.fold(0, (sum, item) => sum + item.total);
   }
 }

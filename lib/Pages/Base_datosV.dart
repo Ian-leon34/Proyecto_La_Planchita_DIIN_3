@@ -31,8 +31,20 @@ class _BaseDatosVState extends State<BaseDatosV> {
     final ventasGuardadasJson = prefs.getString('registro_diario');
     if (ventasGuardadasJson != null) {
       final List<dynamic> ventasDecodificadas = jsonDecode(ventasGuardadasJson);
+
+      // FILTRAR SOLO LAS DEL DÍA ACTUAL
+      final hoy = DateTime.now();
+      final soloHoy =
+          ventasDecodificadas.where((venta) {
+            if (venta['fecha'] == null) return false;
+            final fecha = DateTime.parse(venta['fecha']);
+            return fecha.year == hoy.year &&
+                fecha.month == hoy.month &&
+                fecha.day == hoy.day;
+          }).toList();
+
       setState(() {
-        ventas = ventasDecodificadas.cast<Map<String, dynamic>>();
+        ventas = soloHoy.cast<Map<String, dynamic>>();
       });
     }
   }
@@ -87,19 +99,27 @@ class _BaseDatosVState extends State<BaseDatosV> {
   }
 
   double calcularTotalGeneral() {
-    double total = 0;
-    for (var venta in ventas) {
+    return ventas.fold(0.0, (suma, venta) {
       final cantidad = venta['cantidad'] ?? 0;
       final precio = venta['precio'] ?? 0;
-      total += cantidad * precio;
-    }
-    return total;
+      return suma + (cantidad * precio);
+    });
   }
 
   String formatearFecha(String? fechaIso) {
     if (fechaIso == null) return '';
     final DateTime fecha = DateTime.parse(fechaIso);
     return DateFormat('dd/MM/yyyy HH:mm').format(fecha);
+  }
+
+  String _obtenerTipoVenta(Map<String, dynamic> venta) {
+    final origen = venta['origen'];
+    if (origen == 'aplicacion') {
+      return 'Aplicación';
+    } else if (origen == 'trabajador') {
+      return 'Trabajador';
+    }
+    return 'Trabajador'; // Valor por defecto para compatibilidad
   }
 
   @override
@@ -203,13 +223,14 @@ class _BaseDatosVState extends State<BaseDatosV> {
                             final precio = venta['precio'] ?? 0;
                             final total = (precio * cantidad).toDouble();
                             final fecha = formatearFecha(venta['fecha']);
+                            final tipo = _obtenerTipoVenta(venta);
 
                             return DataRow(
                               cells: [
                                 DataCell(Text(producto)),
                                 DataCell(Text(cantidad.toString())),
                                 DataCell(Text('\$${total.toStringAsFixed(0)}')),
-                                const DataCell(Text('Trabajador')),
+                                DataCell(Text(tipo)),
                                 DataCell(Text(fecha)),
                                 DataCell(
                                   IconButton(

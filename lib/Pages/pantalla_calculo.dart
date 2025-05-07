@@ -61,6 +61,7 @@ class PantallaCalculo extends StatelessWidget {
                 'cantidad': venta['cantidad'],
                 'precio': obtenerPrecio(venta['producto']),
                 'fecha': DateTime.now().toIso8601String(),
+                'origen': 'trabajador', // Identificador para ventas manuales
               },
             )
             .toList();

@@ -4,9 +4,8 @@ import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
 import 'pages/register_page.dart';
 import 'pages/home_screen.dart';
 import 'pages/main_navigation.dart';
-import 'services/user_service.dart'; // Importamos el servicio de usuarios
+import 'services/user_service.dart';
 
-// Definimos la clase AdminPage directamente para evitar problemas de importación
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
